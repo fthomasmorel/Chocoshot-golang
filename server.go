@@ -60,7 +60,7 @@ func sendPushToUser(user string, fromUser string) {
 	pn.DeviceToken = getDeviceTokenForUser(user)
 	pn.AddPayload(payload)
 
-	client := apns.NewClient("gateway.sandbox.push.apple.com:2195", "PushChocoshotCert.pem", "key.unencrypted.pem")
+	client := apns.NewClient("gateway.push.apple.com:2195", "./Push/Prod/PushChocoshotCert.pem", "./Push/Prod/key.unencrypted.pem")
 	client.Send(pn)
 }
 
@@ -158,10 +158,6 @@ func main() {
 		}
 	})
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "hello world")
-	})
-
 	mux.Handle("/image/", http.StripPrefix("/image/", http.FileServer(http.Dir("./img/"))))
 	/*if strings.HasPrefix(r.URL.RequestURI(), "/image/") {
 		file := strings.Replace(r.URL.RequestURI(), "/image/", "./img/", 1)
@@ -169,6 +165,6 @@ func main() {
 		defer os.Remove(file)
 	}*/
 
-	fmt.Println("listening at :9000")
-	http.ListenAndServe(":9000", mux)
+	fmt.Println("listening at :80")
+	http.ListenAndServe(":80", mux)
 }
