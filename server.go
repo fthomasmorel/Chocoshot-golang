@@ -158,6 +158,10 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "hello world")
+	})
+
 	mux.Handle("/image/", http.StripPrefix("/image/", http.FileServer(http.Dir("./img/"))))
 	/*if strings.HasPrefix(r.URL.RequestURI(), "/image/") {
 		file := strings.Replace(r.URL.RequestURI(), "/image/", "./img/", 1)
