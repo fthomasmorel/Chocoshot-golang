@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anachronistic/apns"
+
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -22,6 +24,44 @@ type Post struct {
 	IsHorizontal string
 	Filter       string
 	Separator    string
+}
+
+type Push struct {
+	ID    bson.ObjectId `bson:"_id,omitempty"`
+	User  string
+	Token string
+}
+
+func getDeviceTokenForUser(user string) string {
+	session, _ := mgo.Dial("127.0.0.1")
+	defer session.Close()
+	session.SetMode(mgo.Monotonic, true)
+	c := session.DB("chocoshot").C("push")
+	var result Push
+	c.Find(bson.M{"user": user}).One(&result)
+	return result.Token
+}
+
+func setPushTokenForUser(user string, token string) {
+	session, _ := mgo.Dial("127.0.0.1")
+	defer session.Close()
+	session.SetMode(mgo.Monotonic, true)
+	c := session.DB("chocoshot").C("push")
+	c.Insert(&Push{User: user, Token: token})
+}
+
+func sendPushToUser(user string, fromUser string) {
+	payload := apns.NewPayload()
+	payload.Alert = fromUser + " vous a envoyé un shot 😏📸"
+	payload.Badge = 1
+	payload.Sound = "bingbong.aiff"
+
+	pn := apns.NewPushNotification()
+	pn.DeviceToken = getDeviceTokenForUser(user)
+	pn.AddPayload(payload)
+
+	client := apns.NewClient("gateway.sandbox.push.apple.com:2195", "PushChocoshotCert.pem", "key.unencrypted.pem")
+	client.Send(pn)
 }
 
 func insertDatabase(p Post) {
@@ -48,15 +88,21 @@ func getFromDataBaseWithUser(u string, deletation bool) Post {
 func getPost(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get("user")
 	deletation := r.Header.Get("deletation")
-
-	fmt.Println("deletation = " + deletation)
-
 	var res = getFromDataBaseWithUser(user, deletation == "true")
+	json.NewEncoder(w).Encode(res)
+}
+
+func updatePushToken(w http.ResponseWriter, r *http.Request) {
+	user := strings.TrimSpace(r.FormValue("user"))
+	token := strings.TrimSpace(r.FormValue("token"))
+	setPushTokenForUser(user, token)
+	var res = getDeviceTokenForUser(user)
 	json.NewEncoder(w).Encode(res)
 }
 
 func uploadPost(w http.ResponseWriter, r *http.Request) {
 	user := strings.TrimSpace(r.FormValue("user"))
+	destination := strings.TrimSpace(r.FormValue("destination"))
 	position := strings.TrimSpace(r.FormValue("position"))
 	isHorizontal := strings.TrimSpace(r.FormValue("isHorizontal"))
 	filter := strings.TrimSpace(r.FormValue("filter"))
@@ -77,7 +123,9 @@ func uploadPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	insertDatabase(Post{User: user, Position: position, FileName: fileName + ".png", IsHorizontal: isHorizontal, Filter: filter, Separator: separator})
+	insertDatabase(Post{User: destination, Position: position, FileName: fileName + ".png", IsHorizontal: isHorizontal, Filter: filter, Separator: separator})
+
+	sendPushToUser(destination, user)
 
 	defer f.Close()
 	io.Copy(f, file)
@@ -101,6 +149,12 @@ func main() {
 			getPost(w, r)
 		} else {
 			uploadPost(w, r)
+		}
+	})
+
+	mux.HandleFunc("/push", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			updatePushToken(w, r)
 		}
 	})
 
